@@ -93,7 +93,7 @@ fn main() {
     println!("FFT took: {:?}", duration);
     let start = Instant::now();
     // write stats to text file. Format should be: one line per block, startindex of block, all major frequencies
-    let mut file = File::create("seq_stats.txt").expect("Failed to create file");
+    let mut file = File::create("multic_stats.txt").expect("Failed to create file");
     for (idx, block) in stats.iter() {
         let mut line = format!("{}:\t", idx);
         for (freq, mag) in block.iter() {
