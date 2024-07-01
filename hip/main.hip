@@ -15,7 +15,7 @@
 __global__ void find_major_frequencies(float2 *data, int block_size, int batch)
 {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    if (idx < block_size / 2 * batch)
+    if (idx < (block_size / 2 + 1) * batch)
     {
         float magnitude = 2. / block_size * sqrt(data[idx].x * data[idx].x + data[idx].y * data[idx].y);
         float magnitude_db = 20 * log10(magnitude);
@@ -28,11 +28,10 @@ int main(int argc, char *argv[])
 {
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
     size_t block_size = 2048;
-    size_t max_batch_size = 2;
+    size_t max_batch_size = 1000;
 
     std::string path = "../nicht_zu_laut_abspielen(1).wav";
     int step = 1, db_threshold = 50;
-    std::cout << "Block size: " << block_size << std::endl;
     float block_size_f = static_cast<float>(block_size);
 
     AudioFile<int> audioFile;
@@ -43,8 +42,8 @@ int main(int argc, char *argv[])
     // only look at the first channel
     std::vector<int> samples = audioFile.samples[0];
 
-    size_t iterations = 1;
-    // size_t iterations = floor((static_cast<float>(numSamples) - block_size) / step / max_batch_size);
+    // size_t iterations = 1;
+    size_t iterations = (numSamples - block_size) / max_batch_size;
     size_t last_batch_size = (numSamples - block_size) % max_batch_size;
     size_t batch = max_batch_size;
     hipfftHandle plan;
@@ -56,7 +55,7 @@ int main(int argc, char *argv[])
     hipfftPlan1d(&plan, block_size, HIPFFT_R2C, batch);
 
     std::vector<float> cx(batch * block_size);
-    int thr_per_blk = block_size / 2;
+    int thr_per_blk = block_size / 2 + 1;
     int blk_in_grid = batch;
     std::vector<std::vector<std::pair<int, int>>> all_results(0);
 
@@ -70,6 +69,7 @@ int main(int argc, char *argv[])
         frequencies.push_back(static_cast<int>(i * increment));
     }
 
+    auto start = std::chrono::steady_clock::now();
     for (int k = 0; k < iterations; k++)
     {
         // init data
@@ -82,16 +82,18 @@ int main(int argc, char *argv[])
         }
         hipMemcpy(data, cx.data(), batch * block_size * sizeof(hipfftReal), hipMemcpyHostToDevice);
         hipfftExecR2C(plan, data, result);
+        hipDeviceSynchronize();
+
         hipLaunchKernelGGL(find_major_frequencies, dim3(thr_per_blk), dim3(blk_in_grid), 0, 0, (float2 *)result, block_size, batch);
+
         hipDeviceSynchronize();
         std::vector<float2> y((block_size / 2 + 1) * batch);
         hipMemcpy(y.data(), result, batch * (block_size / 2 + 1) * sizeof(hipfftComplex), hipMemcpyDeviceToHost);
 
         for (int j = 0; j < batch; j++)
         {
-
             std::vector<std::pair<int, int>> results(0);
-            for (int i = 0; i < block_size / 2; i++)
+            for (int i = 0; i < block_size / 2 + 1; i++)
             {
                 if (y[j * (block_size / 2 + 1) + i].x > db_threshold)
                 {
@@ -101,16 +103,26 @@ int main(int argc, char *argv[])
             all_results.push_back(results);
         }
     }
+    auto end = std::chrono::steady_clock::now();
+    std::cout << "FFT took: " << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << "[s]" << std::endl;
+    start = std::chrono::steady_clock::now();
 
     // Print results
-    for (auto &val : all_results)
+    std::ofstream outputFile;
+    outputFile.open("hip_stats.txt");
+    for (int i = 0; i < all_results.size(); i++)
     {
-        for (auto &pair : val)
+        outputFile << i << ":\t";
+        for (auto &pair : all_results[i])
         {
-            std::cout << pair.first << ":" << pair.second << ", ";
+            outputFile << pair.first << ":" << pair.second << ",";
         }
-        std::cout << std::endl;
+        outputFile << "\n";
     }
+    outputFile << std::endl;
+    outputFile.close();
+    end = std::chrono::steady_clock::now();
+    std::cout << "Writing to file took: " << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << "[s]" << std::endl;
     hipfftDestroy(plan);
 
     // Free device buffer
