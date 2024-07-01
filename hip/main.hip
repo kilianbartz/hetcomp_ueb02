@@ -28,6 +28,8 @@ int main(int argc, char *argv[])
 {
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
     size_t block_size = 2048;
+    // for some reason, max_batch_size cannot be set higher, even though the GPU has enough memory
+    // else, the values are not correct
     size_t max_batch_size = 1000;
 
     std::string path = "../nicht_zu_laut_abspielen(1).wav";
