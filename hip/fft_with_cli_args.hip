@@ -108,12 +108,14 @@ int main(int argc, char *argv[])
     size_t last_batch_size = (numSamples - block_size) % max_batch_size;
     size_t batch = max_batch_size;
     hipfftHandle plan;
+    hipfftHandle lastPlan;
     hipfftReal *data;
     hipfftComplex *result;
     hipMalloc(&data, batch * block_size * sizeof(hipfftReal));
     hipMalloc(&result, batch * (block_size / 2 + 1) * sizeof(hipfftComplex));
 
     hipfftPlan1d(&plan, block_size, HIPFFT_R2C, batch);
+    hipfftPlan1d(&lastPlan, block_size, HIPFFT_R2C, last_batch_size);
 
     std::vector<float> cx(batch * block_size);
     int thr_per_blk = block_size / 2 + 1;
@@ -131,27 +133,34 @@ int main(int argc, char *argv[])
     }
 
     auto start = std::chrono::steady_clock::now();
-    for (int k = 0; k < iterations; k++)
+    for (int k = 0; k <= iterations; k++)
     {
+        size_t current_batch = (k < iterations) ? batch : last_batch_size;
         // init data
-        for (size_t j = 0; j < batch; j++)
+        for (size_t j = 0; j < current_batch; j++)
         {
             for (size_t i = 0; i < block_size; i++)
             {
                 cx[block_size * j + i] = static_cast<float>(samples[max_batch_size * k + i + j]);
             }
         }
-        hipMemcpy(data, cx.data(), batch * block_size * sizeof(hipfftReal), hipMemcpyHostToDevice);
-        hipfftExecR2C(plan, data, result);
-        hipDeviceSynchronize();
+        hipMemcpy(data, cx.data(), current_batch * block_size * sizeof(hipfftReal), hipMemcpyHostToDevice);
 
-        hipLaunchKernelGGL(find_major_frequencies, dim3(thr_per_blk), dim3(blk_in_grid), 0, 0, (float2 *)result, block_size, batch);
-
+        if (k < iterations)
+        {
+            hipfftExecR2C(plan, data, result);
+            hipLaunchKernelGGL(find_major_frequencies, dim3(thr_per_blk), dim3(blk_in_grid), 0, 0, (float2 *)result, block_size, batch);
+        }
+        else
+        {
+            hipfftExecR2C(lastPlan, data, result);
+            hipLaunchKernelGGL(find_major_frequencies, dim3(thr_per_blk), dim3(current_batch), 0, 0, (float2 *)result, block_size, batch);
+        }
         hipDeviceSynchronize();
         std::vector<float2> y((block_size / 2 + 1) * batch);
-        hipMemcpy(y.data(), result, batch * (block_size / 2 + 1) * sizeof(hipfftComplex), hipMemcpyDeviceToHost);
+        hipMemcpy(y.data(), result, current_batch * (block_size / 2 + 1) * sizeof(hipfftComplex), hipMemcpyDeviceToHost);
 
-        for (int j = 0; j < batch; j++)
+        for (int j = 0; j < current_batch; j++)
         {
             std::vector<std::pair<int, int>> results(0);
             for (int i = 0; i < block_size / 2 + 1; i++)

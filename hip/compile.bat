@@ -1,1 +1,1 @@
-hipcc .\main.hip -I "C:\ROCm\include" -L "C:\ROCm\lib" -lrocfft --offload-arch=gfx1030
+hipcc .\fft_with_cli_args.hip -I "C:\ROCm\include" -L "C:\ROCm\lib" -lhipfft --offload-arch=gfx1030
