@@ -1,89 +1,73 @@
-import numpy as np
-import scipy.io.wavfile as wav
 import argparse
+import numpy as np
+from scipy.io import wavfile
+from scipy import signal
 
 
-def db_to_amplitude(db):
-    """Konvertiert Dezibel (dB) in lineare Amplitude."""
-    return 10 ** (db / 20)
-
-
-def generate_sine_wave(frequency, duration, sample_rate, amplitude):
-    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-    wave = amplitude * np.sin(2 * np.pi * frequency * t)
-    return wave
-
-
-def generate_square_wave(frequency, duration, sample_rate, amplitude):
-    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-    wave = amplitude * np.sign(np.sin(2 * np.pi * frequency * t))
-    return wave
-
-
-def generate_triangle_wave(frequency, duration, sample_rate, amplitude):
-    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-    wave = amplitude * 2 * (2 * ((t * frequency) % 1) - 1)
-    wave = np.abs(wave) * 2 - 1
-    return wave * amplitude
-
-
-def generate_sawtooth_wave(frequency, duration, sample_rate, amplitude):
-    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-    wave = amplitude * (2 * (t * frequency - np.floor(0.5 + t * frequency)))
-    return wave
-
-
-def save_wave(filename, data, sample_rate):
-    wav.write(filename, sample_rate, data.astype(np.int16))
+def generate_wave(freq, duration, wave_type="sine", sample_rate=44100):
+    t = np.linspace(0, duration, int(sample_rate * duration), False)
+    if wave_type == "sine":
+        return np.sin(2 * np.pi * freq * t)
+    elif wave_type == "square":
+        return signal.square(2 * np.pi * freq * t)
+    elif wave_type == "sawtooth":
+        return signal.sawtooth(2 * np.pi * freq * t)
+    elif wave_type == "triangle":
+        return signal.sawtooth(2 * np.pi * freq * t, width=0.5)
+    else:
+        raise ValueError(f"Unsupported wave type: {wave_type}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generiert WAV-Dateien mit verschiedenen Wellentypen und Frequenzen."
+        description="Generate a WAV file with specified frequencies and wave types."
+    )
+    parser.add_argument("frequencies", type=float, nargs="+", help="Frequencies in Hz")
+    parser.add_argument(
+        "-d", "--duration", type=float, default=5.0, help="Duration in seconds"
     )
     parser.add_argument(
-        "wave_type",
-        choices=["sine", "square", "triangle", "sawtooth"],
-        help="Der Typ der zu generierenden Welle",
+        "-o", "--output", type=str, default="output.wav", help="Output file path"
     )
     parser.add_argument(
-        "frequencies", type=float, nargs="+", help="Die Frequenzen der Wellen in Hz"
+        "-a",
+        "--amplitude",
+        type=float,
+        default=0.5,
+        help="Amplitude of the wave (0.0 to 1.0)",
     )
     parser.add_argument(
-        "--filename", type=str, help="Der Name der resultierenden WAV-Datei"
+        "-s", "--sample-rate", type=int, default=44100, help="Sample rate in Hz"
     )
     parser.add_argument(
-        "--duration", type=float, default=2, help="Die Dauer der Audiodatei in Sekunden"
+        "-w",
+        "--wave-type",
+        type=str,
+        default="sine",
+        choices=["sine", "square", "sawtooth", "triangle"],
+        help="Type of wave to generate",
     )
+
     args = parser.parse_args()
 
-    sample_rate = 44100
+    sample_rate = args.sample_rate
     duration = args.duration
-    amplitude_db = 50
-    amplitude = db_to_amplitude(amplitude_db)
-
-    wave_generators = {
-        "sine": generate_sine_wave,
-        "square": generate_square_wave,
-        "triangle": generate_triangle_wave,
-        "sawtooth": generate_sawtooth_wave,
-    }
-
+    amplitude = args.amplitude
     wave_type = args.wave_type
-    frequencies = args.frequencies
-    filename = args.filename
 
-    combined_wave = np.zeros(int(sample_rate * duration))
+    # Generate waves for each frequency and sum them
+    wave = np.zeros(int(sample_rate * duration))
+    for freq in args.frequencies:
+        wave += generate_wave(freq, duration, wave_type, sample_rate)
 
-    for frequency in frequencies:
-        wave = wave_generators[wave_type](frequency, duration, sample_rate, amplitude)
-        combined_wave += wave
+    # Normalize and scale the wave
+    wave = wave / len(args.frequencies)
+    wave = np.clip(wave, -1, 1)  # Clip to prevent overflow
+    wave = (wave * amplitude * 32767).astype(np.int16)
 
-    combined_wave = combined_wave / len(
-        frequencies
-    )  # Vermeidung von Übersteuerung durch Mittelung
-
-    save_wave(filename, combined_wave, sample_rate)
+    # Write the WAV file
+    wavfile.write(args.output, sample_rate, wave)
+    print(f"WAV file generated: {args.output}")
 
 
 if __name__ == "__main__":

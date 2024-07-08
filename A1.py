@@ -68,7 +68,7 @@ def analyze_audio_blocks(audio_file):
 
     # Laden der Audiodatei
     sr, y = wavfile.read(audio_file)
-    y = y[:, 0]  # Convert to mono if stereo
+    # y = y[:, 0]  # Convert to mono if stereo
     slice_size = (len(y) - BLOCKSIZE) // NUM_CHUNKS
     chunk_indices = [(i * slice_size, (i + 1) * slice_size) for i in range(NUM_CHUNKS)]
     chunk_indices[-1] = (chunk_indices[-1][0], len(y) - BLOCKSIZE)
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     try:
         for i in range(NUM_RUNS):
             stop_mem_recording = False
-            audio_file = "nicht_zu_laut_abspielen.wav"
+            audio_file = "440_880_1200.wav"
 
             analyze_audio_blocks(audio_file)
             stop_mem_recording = True
