@@ -93,8 +93,8 @@ int main(int argc, char *argv[])
     std::cout << "Block size: " << block_size << std::endl;
     std::cout << "Step: " << step << std::endl;
     std::cout << "Threshold: " << db_threshold << " dB" << std::endl;
-    float block_size_f = static_cast<float>(block_size);
 
+    // read audio file
     AudioFile<int> audioFile;
     audioFile.load(path);
 
@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
     // only look at the first channel
     std::vector<int> samples = audioFile.samples[0];
 
-    // size_t iterations = 1;
+    // configure hipfft for normal + last partial batch
     size_t iterations = (numSamples - block_size) / max_batch_size;
     size_t last_batch_size = (numSamples - block_size) % max_batch_size;
     size_t batch = max_batch_size;
@@ -117,9 +117,10 @@ int main(int argc, char *argv[])
     hipfftPlan1d(&plan, block_size, HIPFFT_R2C, batch);
     hipfftPlan1d(&lastPlan, block_size, HIPFFT_R2C, last_batch_size);
 
-    std::vector<float> cx(batch * block_size);
     int thr_per_blk = block_size / 2 + 1;
     int blk_in_grid = batch;
+
+    std::vector<float> cx(batch * block_size);
     std::vector<std::vector<std::pair<int, int>>> all_results(0);
 
     std::vector<int> frequencies(0);
@@ -135,6 +136,7 @@ int main(int argc, char *argv[])
     auto start = std::chrono::steady_clock::now();
     for (int k = 0; k <= iterations; k++)
     {
+        cx.clear();
         size_t current_batch = (k < iterations) ? batch : last_batch_size;
         // init data
         for (size_t j = 0; j < current_batch; j++)
