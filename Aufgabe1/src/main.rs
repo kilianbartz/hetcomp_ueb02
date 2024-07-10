@@ -40,6 +40,7 @@ fn main() {
     // Get the path of the WAV file from the command line arguments
 
     // Open the WAV file
+    let path = path.trim();
     let mut reader = hound::WavReader::open(&path).expect("Failed to open WAV file");
 
     // Create a vector to store the samples
