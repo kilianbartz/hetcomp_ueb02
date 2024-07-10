@@ -23,7 +23,7 @@ void print_help()
     std::cout << "  --threshold THRESHOLD  Threshold in dB for frequency detection (default: 50)" << std::endl;
 }
 
-__global__ void find_major_frequencies(float2 *data, int block_size, int batch)
+__global__ void convert_to_dB(float2 *data, int block_size, int batch)
 {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx < (block_size / 2 + 1) * batch)
@@ -151,12 +151,12 @@ int main(int argc, char *argv[])
         if (k < iterations)
         {
             hipfftExecR2C(plan, data, result);
-            hipLaunchKernelGGL(find_major_frequencies, dim3(thr_per_blk), dim3(blk_in_grid), 0, 0, (float2 *)result, block_size, batch);
+            hipLaunchKernelGGL(convert_to_dB, dim3(thr_per_blk), dim3(blk_in_grid), 0, 0, (float2 *)result, block_size, batch);
         }
         else
         {
             hipfftExecR2C(lastPlan, data, result);
-            hipLaunchKernelGGL(find_major_frequencies, dim3(thr_per_blk), dim3(current_batch), 0, 0, (float2 *)result, block_size, batch);
+            hipLaunchKernelGGL(convert_to_dB, dim3(thr_per_blk), dim3(current_batch), 0, 0, (float2 *)result, block_size, batch);
         }
         hipDeviceSynchronize();
         std::vector<float2> y((block_size / 2 + 1) * batch);
